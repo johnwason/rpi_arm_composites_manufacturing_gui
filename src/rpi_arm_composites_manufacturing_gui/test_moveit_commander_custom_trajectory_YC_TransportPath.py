@@ -9,7 +9,7 @@ def main():
     
     controller_commander=controller_commander_pkg.ControllerCommander()
     
-    controller_commander.set_controller_mode(controller_commander.MODE_AUTO_TRAJECTORY, 1.0, [], [])
+    controller_commander.set_controller_mode(controller_commander.MODE_AUTO_TRAJECTORY, 0.5, [], [])
     waypoints = np.loadtxt("/home/rpi-cats/catkin_ws/src/rpi_arm_composites_manufacturing_gui/src/rpi_arm_composites_manufacturing_gui/Path.txt", comments="#", delimiter=",", unpack=False)
 
     plan0=RobotTrajectory()    

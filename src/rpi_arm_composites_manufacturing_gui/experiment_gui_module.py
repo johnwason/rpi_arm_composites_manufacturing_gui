@@ -32,6 +32,7 @@ from user_authentication_window import UserAuthenticationWindow
 #TODO Integrate pyqtgraph into automatic package download
 import pyqtgraph as pg
 import threading
+import traceback
 '''
 freeBytes=QSemaphore(100)
 usedBytes=QSemaphore()
@@ -431,35 +432,48 @@ class ExperimentGUI(Plugin):
 
     def _execute_steps(self,steps_index,resume_index=0, target="",target_index=-1):
         #TODO Create separate thread for each execution step that waits until in_process is true
-
-        for step_num in range(resume_index,len(self.execute_states[steps_index])):
-
-            client=self.client
-            if(step_num==target_index):
-                g=ProcessStepGoal(self.execute_states[steps_index][step_num], target)
-            else:
-                g=ProcessStepGoal(self.execute_states[steps_index][step_num], "")
-
-            self._send_event.wait()
-            if(self.recover_from_pause):
-                if('plan' in self.execute_states[steps_index][step_num]):
-                    self.last_step=step_num
+        try:
+            for step_num in range(resume_index,len(self.execute_states[steps_index])):
+    
+                client=self.client
+                if(step_num==target_index):
+                    g=ProcessStepGoal(self.execute_states[steps_index][step_num], target)
                 else:
-                    self.last_step=step_num-1
+                    g=ProcessStepGoal(self.execute_states[steps_index][step_num], "")
+    
+                #self._send_event.wait()
+                if(self.recover_from_pause):
+                    if('plan' in self.execute_states[steps_index][step_num]):
+                        self.last_step=step_num
+                    else:
+                        self.last_step=step_num-1
+                    self._send_event.clear()
+                    break
+                client.send_goal(g)
+                client.wait_for_result()
+                #time.sleep(2.5)
+                #self.in_process=True
+                
+                if client.get_state() != actionlib.GoalStatus.SUCCEEDED:
+                    raise Exception("Operation failed: " + client.get_goal_status_text())
+                
+                print client.get_result()
+                
+    
                 self._send_event.clear()
-                break
-            client.send_goal(g)
-
-            #self.in_process=True
-
-            print client.get_result()
-
-            self._send_event.clear()
-
-        self.commands_sent=True
-
-        if( not self.recover_from_pause):
-            self.last_step=0
+    
+            self.commands_sent=True
+    
+            if( not self.recover_from_pause):
+                self.last_step=0
+        except:
+            traceback.print_exc()
+            messagewindow=VacuumConfirm()
+            QMessageBox.information(messagewindow, 'Error', 'Operation failed')
+            
+        self._runscreen.nextPlan.setDisabled(False)
+        self._runscreen.previousPlan.setDisabled(False)
+        self._runscreen.resetToHome.setDisabled(False)
 
         #TODO: using client.get_state can implemen action state recall to eliminate plan from moveit?
     #TODO: make it so that next plan throws it back into automatic mode every time and then teleop switches to teleop mode and plans the next move
@@ -481,7 +495,13 @@ class ExperimentGUI(Plugin):
         time.sleep(1)
 
         if(self.planListIndex==0):
-            subprocess.Popen(['python', self.reset_code])
+            ret_code=-1
+            try:
+                reset_popen=subprocess.Popen(['python', self.reset_code])
+                reset_popen.wait()
+                ret_code=reset_popen.returncode
+            finally:
+                pass
             """
             self._runscreen.vacuum.setText("OFF")
             self._runscreen.panel.setText("Detached")
@@ -492,6 +512,15 @@ class ExperimentGUI(Plugin):
             self._runscreen.forceSensor.setText("Biased to 0")
             self._runscreen.pressureSensor.setText("[0,0,0]")
             """
+            
+            self._runscreen.nextPlan.setDisabled(False)
+            self._runscreen.previousPlan.setDisabled(False)
+            self._runscreen.resetToHome.setDisabled(False)
+            
+            if ret_code != 0:
+                messagewindow=VacuumConfirm()
+                QMessageBox.information(messagewindow, 'Error', 'Operation failed')
+            
         elif(self.planListIndex==1):
             self.send_thread=threading.Thread(target=self._execute_steps,args=(1,self.last_step, self.panel_type,0))
             rospy.loginfo("thread_started")
@@ -535,10 +564,16 @@ class ExperimentGUI(Plugin):
             self._runscreen.pressureSensor.setText("[0,0,0]")
             """
         elif(self.planListIndex==3):
-            if(self.panel_type=="leeward_mid_panel"):
-                subprocess.Popen(['python', self.YC_transport_code, 'leeward_mid_panel'])
-            elif(self.panel_type=="leeward_tip_panel"):
-                subprocess.Popen(['python', self.YC_transport_code, 'leeward_tip_panel'])
+            retcode=-1
+            try:
+                if(self.panel_type=="leeward_mid_panel"):
+                    p=subprocess.Popen(['python', self.YC_transport_code, 'leeward_mid_panel'])
+                elif(self.panel_type=="leeward_tip_panel"):
+                    p=subprocess.Popen(['python', self.YC_transport_code, 'leeward_tip_panel'])
+                p.wait()
+                ret_code=p.returncode
+            finally:
+                pass
             self._runscreen.nextPlan.setDisabled(False)
             self._runscreen.previousPlan.setDisabled(False)
             self._runscreen.resetToHome.setDisabled(False)
@@ -559,12 +594,23 @@ class ExperimentGUI(Plugin):
             self._runscreen.forceSensor.setText("ON")
             self._runscreen.pressureSensor.setText("[1,1,1]")
             """
+            
+            if ret_code != 0:
+                messagewindow=VacuumConfirm()
+                QMessageBox.information(messagewindow, 'Error', 'Operation failed')
+            
         elif(self.planListIndex==4):
-            if(self.panel_type=="leeward_mid_panel"):
-                subprocess.Popen(['python', self.YC_place_code])
-            elif(self.panel_type=="leeward_tip_panel"):
-                subprocess.Popen(['python', self.YC_place_code2])
-
+            retcode=-1
+            try:
+                if(self.panel_type=="leeward_mid_panel"):
+                    p=subprocess.Popen(['python', self.YC_place_code])
+                elif(self.panel_type=="leeward_tip_panel"):
+                    p=subprocess.Popen(['python', self.YC_place_code2])
+                p.wait()
+                ret_code=p.returncode
+            finally:
+                pass
+            
             """
             self._runscreen.vacuum.setText("ON")
             self._runscreen.panel.setText("Attached")
@@ -576,7 +622,10 @@ class ExperimentGUI(Plugin):
             self._runscreen.pressureSensor.setText("[1,1,1]")
             """
 
-
+            if ret_code != 0:
+                messagewindow=VacuumConfirm()
+                QMessageBox.information(messagewindow, 'Error', 'Operation failed')
+            
 
     def _previousPlan(self):
         if(self.planListIndex==0):
@@ -644,14 +693,15 @@ class ExperimentGUI(Plugin):
         self.planListIndexname=data.state
         self._send_event.set()
 
-        if(self.commands_sent):
-            self._runscreen.nextPlan.setDisabled(False)
-            self._runscreen.previousPlan.setDisabled(False)
-            self._runscreen.resetToHome.setDisabled(False)
+        #if(self.commands_sent):
+        #    self._runscreen.nextPlan.setDisabled(False)
+        #    self._runscreen.previousPlan.setDisabled(False)
+        #    self._runscreen.resetToHome.setDisabled(False)
 
 
     def callback(self,data):
         #self._widget.State_info.append(data.mode)
+        return
         with self._lock:
             if(self.stackedWidget.currentIndex()==2):
                 if(self.count>10):

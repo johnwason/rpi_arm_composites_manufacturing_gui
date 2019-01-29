@@ -6,7 +6,7 @@ from sensor_msgs.msg import CompressedImage, CameraInfo, Image
 import general_robotics_toolbox as rox
 import general_robotics_toolbox.urdf as urdf
 import general_robotics_toolbox.ros_msg as rox_msg
-from pyspin_wrapper.srv import CameraTrigger
+#from pyspin_wrapper.srv import CameraTrigger
 
 from cv_bridge import CvBridge, CvBridgeError
 from industrial_payload_manager import PayloadTransformListener
@@ -32,6 +32,8 @@ from QuadProg_YC_Cam import QP_Cam
 
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+
+from std_srvs.srv import Trigger
 
 ft_threshold=[500,500,500,500,500,500]
 ft_threshold_place=[500,500,500,500,500,500]
@@ -252,7 +254,7 @@ def main():
   
     #subscribe to Gripper camera node for image acquisition     
     ros_gripper_2_img_sub=rospy.Subscriber('/gripper_camera_2/image', Image, object_commander.ros_raw_gripper_2_image_cb)
-    ros_gripper_2_trigger=rospy.ServiceProxy('/gripper_camera_2/continuous_trigger', CameraTrigger)
+    ros_gripper_2_trigger=rospy.ServiceProxy('/gripper_camera_2/camera_trigger', Trigger)
 
     #Set controller command mode
     controller_commander.set_controller_mode(controller_commander.MODE_AUTO_TRAJECTORY, 0.4, [],[])
@@ -303,8 +305,8 @@ def main():
     P = np.zeros([150,3])
 
     #Load object points ground tag in panel tag coordinate system from mat file
-    loaded_object_points_ground_in_panel_system_stage_1 = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_Offset_In_Nest.mat')['object_points_ground_in_panel_tag_system']
-    loaded_object_points_ground_in_panel_system_stage_2 = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_In_Nest.mat')['object_points_ground_in_panel_tag_system']    
+    loaded_object_points_ground_in_panel_system_stage_1 = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_Offset_In_Nest.mat')['object_points_ground_in_panel_tag_system']
+    loaded_object_points_ground_in_panel_system_stage_2 = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_In_Nest.mat')['object_points_ground_in_panel_tag_system']    
     loaded_object_points_ground_in_panel_system=loaded_object_points_ground_in_panel_system_stage_1
     
 
@@ -357,7 +359,7 @@ def main():
     last_ros_image_stamp = object_commander.ros_image_stamp        
     try:
         ros_gripper_2_trigger.wait_for_service(timeout=0.1)
-        ros_gripper_2_trigger(False)
+        ros_gripper_2_trigger()
     except:
         pass
     wait_count=0
@@ -366,7 +368,11 @@ def main():
             raise Exception("Image receive timeout")
         time.sleep(0.25)
         wait_count += 1
-    result = object_commander.ros_image    
+    if len(object_commander.ros_image) > 2 and object_commander.ros_image.shape[2] == 4:
+            result=cv2.cvtColor(object_commander.ros_image, cv2.COLOR_BGRA2BGR)
+    else:
+        result = object_commander.ros_image
+    
     
     #Detect tag corners in aqcuired image using aruco
     corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(result, aruco_dict, parameters=parameters)
@@ -414,8 +420,8 @@ def main():
     print "rvec differnece: ",observed_rvec_difference
     
     #Load ideal pose differnece information from file
-    loaded_rvec_difference = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_Offset_In_Nest.mat')['rvec_difference']
-    loaded_tvec_difference = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_Offset_In_Nest.mat')['tvec_difference']
+    loaded_rvec_difference = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_Offset_In_Nest.mat')['rvec_difference']
+    loaded_tvec_difference = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_Offset_In_Nest.mat')['tvec_difference']
 
     print"============== Ideal Pose difference in nest position"
     print "tvec difference: ",loaded_tvec_difference
@@ -474,8 +480,8 @@ def main():
 			print "rvec differnece: ",observed_rvec_difference
 
 			#Load ideal pose differnece information from file
-			loaded_rvec_difference = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_Offset_In_Nest.mat')['rvec_difference']
-			loaded_tvec_difference = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_Offset_In_Nest.mat')['tvec_difference']
+			loaded_rvec_difference = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_Offset_In_Nest.mat')['rvec_difference']
+			loaded_tvec_difference = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_Offset_In_Nest.mat')['tvec_difference']
 
 			print"============== Ideal Pose difference in hovering position"
 			print "tvec difference: ",loaded_tvec_difference
@@ -489,10 +495,10 @@ def main():
 			print "rvec differnece: ",rvec_difference_Above_Nest 
 
 			#Saving pose information to file
-			filename_pose1 = "/home/rpi-cats/Desktop/DJ/Code/Data/Panel2_Above_Nest_Pose_"+str(t1)+".mat"
-			scipy.io.savemat(filename_pose1, mdict={'tvec_ground_Above_Nest':tvec_ground, 'tvec_panel_Above_Nest':tvec_panel, 
-			'Rca_ground_Above_Nest':Rca_ground, 'Rca_panel_Above_Nest': Rca_panel, 'tvec_difference_Above_Nest': tvec_ground-tvec_panel, 'rvec_difference_Above_Nest': rvec_ground-rvec_panel,
-			'loaded_tvec_difference':loaded_tvec_difference, 'loaded_rvec_difference':loaded_rvec_difference,'observed_tvec_difference':observed_tvec_difference,'observed_rvec_difference':observed_rvec_difference})
+			filename_pose1 = "/home/wasonj/Desktop/DJ/Code/Data/Panel2_Above_Nest_Pose_"+str(t1)+".mat"
+			#scipy.io.savemat(filename_pose1, mdict={'tvec_ground_Above_Nest':tvec_ground, 'tvec_panel_Above_Nest':tvec_panel, 
+			#'Rca_ground_Above_Nest':Rca_ground, 'Rca_panel_Above_Nest': Rca_panel, 'tvec_difference_Above_Nest': tvec_ground-tvec_panel, 'rvec_difference_Above_Nest': rvec_ground-rvec_panel,
+			#'loaded_tvec_difference':loaded_tvec_difference, 'loaded_rvec_difference':loaded_rvec_difference,'observed_tvec_difference':observed_tvec_difference,'observed_rvec_difference':observed_rvec_difference})
 			
 			raw_input("Confirm Stage 2")        
 			stage=2
@@ -509,7 +515,7 @@ def main():
         last_ros_image_stamp = object_commander.ros_image_stamp        
         try:
             ros_gripper_2_trigger.wait_for_service(timeout=0.1)
-            ros_gripper_2_trigger(False)
+            ros_gripper_2_trigger()
         except:
             pass
         wait_count=0
@@ -518,7 +524,11 @@ def main():
                 raise Exception("Image receive timeout")
             time.sleep(0.25)
             wait_count += 1
-        result = object_commander.ros_image
+        if len(object_commander.ros_image) > 2 and object_commander.ros_image.shape[2] == 4:
+            result=cv2.cvtColor(object_commander.ros_image, cv2.COLOR_BGRA2BGR)
+        else:
+            result = object_commander.ros_image
+        
         #Save
 #        filename = "Acquisition3_%d.jpg" % (time.time())
 #        scipy.misc.imsave(filename, result)
@@ -612,8 +622,8 @@ def main():
             cv2.imshow('Image',frame_with_markers_and_axis)
             cv2.waitKey(1)
             #Save
-            filename_image = "/home/rpi-cats/Desktop/DJ/Code/Images/Panel2_Acquisition_"+str(t1)+"_"+str(iteration)+".jpg"
-            scipy.misc.imsave(filename_image, frame_with_markers_and_axis)
+            filename_image = "/home/wasonj/Desktop/DJ/Code/Images/Panel2_Acquisition_"+str(t1)+"_"+str(iteration)+".jpg"
+            #scipy.misc.imsave(filename_image, frame_with_markers_and_axis)
             
             #Go through a particular point in all tags to build the complete Jacobian
             for ic in range(4):
@@ -800,13 +810,13 @@ def main():
     
 
     #Saving iteration data to file
-    filename_data = "/home/rpi-cats/Desktop/YC/Data/Panel2_Data_"+str(t1)+".mat"
-    scipy.io.savemat(filename_data, mdict={'du_array':du_array, 'dv_array':dv_array, 'dx_array':dx_array, 'step_size':step_size, 'iteration':iteration})
+    filename_data = "/home/wasonj/Desktop/YC/Data/Panel2_Data_"+str(t1)+".mat"
+    #scipy.io.savemat(filename_data, mdict={'du_array':du_array, 'dv_array':dv_array, 'dx_array':dx_array, 'step_size':step_size, 'iteration':iteration})
 	
 	
     #Saving force data to file
-    filename_force_data = "/home/rpi-cats/Desktop/YC/Data/Panel2_Data_force_"+str(t1)+".mat"
-    scipy.io.savemat(filename_force_data, mdict={'FTread':FTread_array, 'FTdata':FTdata_array, 't_now_array':t_now_array})	
+    filename_force_data = "/home/wasonj/Desktop/YC/Data/Panel2_Data_force_"+str(t1)+".mat"
+    #scipy.io.savemat(filename_force_data, mdict={'FTread':FTread_array, 'FTdata':FTdata_array, 't_now_array':t_now_array})	
     
     print '###############################'
     print 'step_size',step_size
@@ -875,8 +885,8 @@ def main():
 #    print "rvec differnece: ",observed_rvec_difference
 #    
 #    #Load ideal pose differnece information from file
-#    loaded_rvec_difference = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Cam_636_object_points_ground_tag_in_panel_frame_Above_Nest.mat')['rvec_difference']
-#    loaded_tvec_difference = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Cam_636_object_points_ground_tag_in_panel_frame_Above_Nest.mat')['tvec_difference']
+#    loaded_rvec_difference = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Cam_636_object_points_ground_tag_in_panel_frame_Above_Nest.mat')['rvec_difference']
+#    loaded_tvec_difference = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Cam_636_object_points_ground_tag_in_panel_frame_Above_Nest.mat')['tvec_difference']
 #
 #    print"============== Ideal Pose difference in hovering position"
 #    print "tvec difference: ",loaded_tvec_difference
@@ -919,7 +929,7 @@ def main():
     last_ros_image_stamp = object_commander.ros_image_stamp        
     try:
         ros_gripper_2_trigger.wait_for_service(timeout=0.1)
-        ros_gripper_2_trigger(False)
+        ros_gripper_2_trigger()
     except:
         pass
     wait_count=0
@@ -928,7 +938,11 @@ def main():
             raise Exception("Image receive timeout")
         time.sleep(0.25)
         wait_count += 1
-    result = object_commander.ros_image    
+    if len(object_commander.ros_image) > 2 and object_commander.ros_image.shape[2] == 4:
+            result=cv2.cvtColor(object_commander.ros_image, cv2.COLOR_BGRA2BGR)
+    else:
+        result = object_commander.ros_image
+        
     
     #Detect tag corners in aqcuired image using aruco
     corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(result, aruco_dict, parameters=parameters)
@@ -976,8 +990,8 @@ def main():
     print "rvec differnece: ",observed_rvec_difference
     
     #Load ideal pose differnece information from file
-    loaded_rvec_difference = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_In_Nest.mat')['rvec_difference']
-    loaded_tvec_difference = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_In_Nest.mat')['tvec_difference']
+    loaded_rvec_difference = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_In_Nest.mat')['rvec_difference']
+    loaded_tvec_difference = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_In_Nest.mat')['tvec_difference']
 
     print"============== Ideal Pose difference in nest position"
     print "tvec difference: ",loaded_tvec_difference
@@ -1014,7 +1028,7 @@ def main():
     last_ros_image_stamp = object_commander.ros_image_stamp        
     try:
         ros_gripper_2_trigger.wait_for_service(timeout=0.1)
-        ros_gripper_2_trigger(False)
+        ros_gripper_2_trigger()
     except:
         pass
     wait_count=0
@@ -1023,7 +1037,11 @@ def main():
             raise Exception("Image receive timeout")
         time.sleep(0.25)
         wait_count += 1
-    result = object_commander.ros_image    
+    if len(object_commander.ros_image) > 2 and object_commander.ros_image.shape[2] == 4:
+            result=cv2.cvtColor(object_commander.ros_image, cv2.COLOR_BGRA2BGR)
+    else:
+        result = object_commander.ros_image
+        
     
     #Detect tag corners in aqcuired image using aruco
     corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(result, aruco_dict, parameters=parameters)
@@ -1071,8 +1089,8 @@ def main():
     print "rvec differnece: ",observed_rvec_difference
     
     #Load ideal pose differnece information from file
-    loaded_rvec_difference = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_In_Nest.mat')['rvec_difference']
-    loaded_tvec_difference = loadmat('/home/rpi-cats/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_In_Nest.mat')['tvec_difference']
+    loaded_rvec_difference = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_In_Nest.mat')['rvec_difference']
+    loaded_tvec_difference = loadmat('/home/wasonj/Desktop/DJ/Ideal Position/Panel2_Cam_636_object_points_ground_tag_in_panel_frame_In_Nest.mat')['tvec_difference']
 
     print"============== Ideal Pose difference in nest position"
     print "tvec difference: ",loaded_tvec_difference
@@ -1087,10 +1105,10 @@ def main():
     print "rvec differnece: ",loaded_rvec_difference-observed_rvec_difference 
     
     #Saving pose information to file
-    filename_pose2 = "/home/rpi-cats/Desktop/DJ/Code/Data/In_Nest_Pose_"+str(t1)+".mat"
-    scipy.io.savemat(filename_pose2, mdict={'tvec_ground_In_Nest':tvec_ground, 'tvec_panel_In_Nest':tvec_panel, 
-    'Rca_ground_In_Nest':Rca_ground, 'Rca_panel_In_Nest': Rca_panel, 'tvec_difference_In_Nest': tvec_ground-tvec_panel, 'rvec_difference_In_Nest': rvec_ground-rvec_panel, 
-    'loaded_tvec_difference':loaded_tvec_difference, 'loaded_rvec_difference':loaded_rvec_difference,'observed_tvec_difference':observed_tvec_difference,'observed_rvec_difference':observed_rvec_difference})	
+    filename_pose2 = "/home/wasonj/Desktop/DJ/Code/Data/In_Nest_Pose_"+str(t1)+".mat"
+    #scipy.io.savemat(filename_pose2, mdict={'tvec_ground_In_Nest':tvec_ground, 'tvec_panel_In_Nest':tvec_panel, 
+    #'Rca_ground_In_Nest':Rca_ground, 'Rca_panel_In_Nest': Rca_panel, 'tvec_difference_In_Nest': tvec_ground-tvec_panel, 'rvec_difference_In_Nest': rvec_ground-rvec_panel, 
+    #'loaded_tvec_difference':loaded_tvec_difference, 'loaded_rvec_difference':loaded_rvec_difference,'observed_tvec_difference':observed_tvec_difference,'observed_rvec_difference':observed_rvec_difference})	
 	
     
     print "============ Lift gripper!"
